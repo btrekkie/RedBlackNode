@@ -882,7 +882,7 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
      * destructive, meaning it does not preserve the original tree. It assumes that this node is the root and is in the
      * same tree as splitNode. It takes O(log N) time. It is considerably more efficient than removing all of the
      * nodes at or after splitNode and then creating a new tree from those nodes.
-     * @param The node at which to split the tree.
+     * @param splitNode The node at which to split the tree.
      * @return An array consisting of the resulting trees.
      */
     public N[] split(N splitNode) {
@@ -1087,40 +1087,77 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
     }
 
     /**
-     * Returns the lowest common ancestor of this node and "other" - the node that is an ancestor of both and is not the
-     * parent of a node that is an ancestor of both. Assumes that this is in the same tree as "other". Assumes that
-     * neither "this" nor "other" is a leaf node. This method may return "this" or "other".
-     *
-     * Note that while it is possible to compute the lowest common ancestor in O(P) time, where P is the length of the
-     * path from this node to "other", the "lca" method is not guaranteed to take O(P) time. If your application
-     * requires this, then you should write your own lowest common ancestor method.
+     * Returns the depth of this node minus the depth of "other". Throws an IllegalArgumentException instead if the
+     * nodes do not belong to the same tree or one of them is a leaf node. This method takes O(P) time, where P is the
+     * length of the path from this node to "other".
      */
-    public N lca(N other) {
+    private int depthDiff(N other) {
         if (isLeaf() || other.isLeaf()) {
             throw new IllegalArgumentException("One of the nodes is a leaf node");
         }
 
-        // Compute the depth of each node
-        int depth = 0;
-        for (N parent = this.parent; parent != null; parent = parent.parent) {
-            depth++;
-        }
-        int otherDepth = 0;
-        for (N parent = other.parent; parent != null; parent = parent.parent) {
-            otherDepth++;
+        int distance = 0;
+        RedBlackNode<N> parent = this;
+        int otherDistance = 0;
+        N otherParent = other;
+        while (parent.parent != null && otherParent.parent != null) {
+            do {
+                parent = parent.parent;
+                distance++;
+                if (parent == otherParent) {
+                    return distance - otherDistance;
+                }
+                if (parent.parent == null) {
+                    break;
+                }
+            } while (distance < 2 * otherDistance);
+
+            while (otherDistance < 2 * distance) {
+                otherParent = otherParent.parent;
+                otherDistance++;
+                if (otherParent == parent) {
+                    return distance - otherDistance;
+                }
+                if (otherParent.parent == null) {
+                    break;
+                }
+            }
         }
 
+        while (parent.parent != null) {
+            parent = parent.parent;
+            distance++;
+        }
+        while (otherParent.parent != null) {
+            otherParent = otherParent.parent;
+            otherDistance++;
+        }
+        if (parent != otherParent) {
+            throw new IllegalArgumentException("The nodes do not belong to the same tree");
+        }
+        return distance - otherDistance;
+    }
+
+    /**
+     * Returns the lowest common ancestor of this node and "other" - the node that is an ancestor of both and is not the
+     * parent of a node that is an ancestor of both. Assumes that this is in the same tree as "other". Assumes that
+     * neither "this" nor "other" is a leaf node. This method may return "this" or "other".
+     *
+     * This method takes O(log N) time, or more precisely, O(P) time, where P is the length of the path from this node
+     * to "other".
+     */
+    public N lca(N other) {
         // Go up to nodes of the same depth
-        @SuppressWarnings("unchecked")
-        N parent = (N)this;
+        int depthDiff = depthDiff(other);
+        RedBlackNode<N> parent = this;
         N otherParent = other;
-        if (depth <= otherDepth) {
-            for (int i = otherDepth; i > depth; i--) {
-                otherParent = otherParent.parent;
+        if (depthDiff >= 0) {
+            for (int i = 0; i < depthDiff; i++) {
+                parent = parent.parent;
             }
         } else {
-            for (int i = depth; i > otherDepth; i--) {
-                parent = parent.parent;
+            for (int i = 0; i < -depthDiff; i++) {
+                otherParent = otherParent.parent;
             }
         }
 
@@ -1129,11 +1166,7 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             parent = parent.parent;
             otherParent = otherParent.parent;
         }
-        if (parent != null) {
-            return parent;
-        } else {
-            throw new IllegalArgumentException("The nodes do not belong to the same tree");
-        }
+        return otherParent;
     }
 
     /**
@@ -1141,19 +1174,12 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
      * a negative number if this is earlier, a positive number if this is later, and 0 if this is at the same position.
      * Assumes that this is in the same tree as "other". Assumes that neither "this" nor "other" is a leaf node.
      *
-     * The base class's implementation takes O(log N) time. If a RedBlackNode subclass stores a value used to order the
-     * nodes, then it could override compareTo to compare the nodes' values, which would take O(1) time.
-     *
-     * Note that while it is possible to compare the positions of two nodes in O(P) time, where P is the length of the
-     * path from this node to "other", the default implementation of compareTo is not guaranteed to take O(P) time. If
-     * your application requires this, then you should write your own comparison method.
+     * The base class's implementation takes O(log N) time, or more precisely, O(P) time, where P is the length of the
+     * path from this node to "other". If a RedBlackNode subclass stores a value used to order the nodes, then it could
+     * override compareTo to compare the nodes' values, which would take O(1) time.
      */
     @Override
     public int compareTo(N other) {
-        if (isLeaf() || other.isLeaf()) {
-            throw new IllegalArgumentException("One of the nodes is a leaf node");
-        }
-
         // The algorithm operates as follows: compare the depth of this node to that of "other".  If the depth of
         // "other" is greater, keep moving up from "other" until we find the ancestor at the same depth.  Then, keep
         // moving up from "this" and from that node until we reach the lowest common ancestor.  The node that arrived
@@ -1163,35 +1189,12 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             return 0;
         }
 
-        // Compute the depth of each node
-        int depth = 0;
-        RedBlackNode<N> parent;
-        for (parent = this; parent.parent != null; parent = parent.parent) {
-            depth++;
-        }
-        int otherDepth = 0;
-        N otherParent;
-        for (otherParent = other; otherParent.parent != null; otherParent = otherParent.parent) {
-            otherDepth++;
-        }
-
         // Go up to nodes of the same depth
-        if (depth < otherDepth) {
-            otherParent = other;
-            for (int i = otherDepth - 1; i > depth; i--) {
-                otherParent = otherParent.parent;
-            }
-            if (otherParent.parent != this) {
-                otherParent = otherParent.parent;
-            } else if (left == otherParent) {
-                return 1;
-            } else {
-                return -1;
-            }
-            parent = this;
-        } else if (depth > otherDepth) {
-            parent = this;
-            for (int i = depth - 1; i > otherDepth; i--) {
+        int depthDiff = depthDiff(other);
+        RedBlackNode<N> parent = this;
+        N otherParent = other;
+        if (depthDiff > 0) {
+            for (int i = 0; i + 1 < depthDiff; i++) {
                 parent = parent.parent;
             }
             if (parent.parent != other) {
@@ -1201,19 +1204,23 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             } else {
                 return 1;
             }
-            otherParent = other;
-        } else {
-            parent = this;
-            otherParent = other;
+        } else if (depthDiff < 0) {
+            for (int i = 0; i + 1 < -depthDiff; i++) {
+                otherParent = otherParent.parent;
+            }
+            if (otherParent.parent != this) {
+                otherParent = otherParent.parent;
+            } else if (left == otherParent) {
+                return 1;
+            } else {
+                return -1;
+            }
         }
 
         // Keep going up until we reach the lowest common ancestor
         while (parent.parent != otherParent.parent) {
             parent = parent.parent;
             otherParent = otherParent.parent;
-        }
-        if (parent.parent == null) {
-            throw new IllegalArgumentException("The nodes do not belong to the same tree");
         }
         if (parent.parent.left == parent) {
             return -1;
