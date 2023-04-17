@@ -44,16 +44,11 @@ public class TreeList<T> extends AbstractList<T> {
 
     /** Constructs a new TreeList containing the specified values, in iteration order. */
     public TreeList(Collection<? extends T> values) {
-        root = createTree(values);
-    }
-
-    /** Returns the root of a perfectly height-balanced tree containing the specified values, in iteration order. */
-    private TreeListNode<T> createTree(Collection<? extends T> values) {
         List<TreeListNode<T>> nodes = new ArrayList<TreeListNode<T>>(values.size());
         for (T value : values) {
             nodes.add(new TreeListNode<T>(value));
         }
-        return RedBlackNode.<TreeListNode<T>>createTree(nodes, leaf);
+        root = RedBlackNode.createTree(nodes, leaf);
     }
 
     /**
@@ -149,16 +144,26 @@ public class TreeList<T> extends AbstractList<T> {
         if (index < 0 || index > root.size) {
             throw new IndexOutOfBoundsException("Index " + index + " is not in the range [0, " + root.size + "]");
         }
-        modCount++;
-
-        if (values.isEmpty()) {
-            return false;
+        if (index >= root.size) {
+            return addAll(values);
         } else {
-            if (index >= root.size) {
-                root = root.concatenate(createTree(values));
+            modCount++;
+            int size = values.size();
+            if (size == 0) {
+                return false;
+            }
+
+            List<TreeListNode<T>> nodes = new ArrayList<TreeListNode<T>>(size);
+            for (T value : values) {
+                nodes.add(new TreeListNode<T>(value));
+            }
+
+            TreeListNode<T>[] split = root.split(getNode(index));
+            if (size == 1) {
+                root = split[0].concatenate(split[1], nodes.get(0));
             } else {
-                TreeListNode<T>[] split = root.split(getNode(index));
-                root = split[0].concatenate(createTree(values)).concatenate(split[1]);
+                TreeListNode<T> addRoot = TreeListNode.createTree(nodes.subList(1, size - 1), leaf);
+                root = split[0].concatenate(addRoot, nodes.get(0)).concatenate(split[1], nodes.get(size - 1));
             }
             return true;
         }
@@ -167,12 +172,18 @@ public class TreeList<T> extends AbstractList<T> {
     @Override
     public boolean addAll(Collection<? extends T> values) {
         modCount++;
-        if (values.isEmpty()) {
+        int size = values.size();
+        if (size == 0) {
             return false;
-        } else {
-            root = root.concatenate(createTree(values));
-            return true;
         }
+
+        List<TreeListNode<T>> nodes = new ArrayList<TreeListNode<T>>(size);
+        for (T value : values) {
+            nodes.add(new TreeListNode<T>(value));
+        }
+        TreeListNode<T> addRoot = TreeListNode.createTree(nodes.subList(1, size), leaf);
+        root = root.concatenate(addRoot, nodes.get(0));
+        return true;
     }
 
     @Override
@@ -187,8 +198,14 @@ public class TreeList<T> extends AbstractList<T> {
                 root = split[0];
                 last = split[1];
             }
-            TreeListNode<T> first = root.split(getNode(startIndex))[0];
-            root = first.concatenate(last);
+
+            if (startIndex == 0) {
+                root = last;
+            } else {
+                TreeListNode<T> pivot = getNode(startIndex - 1);
+                TreeListNode<T> first = root.split(pivot)[0];
+                root = first.concatenate(last, pivot);
+            }
         }
     }
 
