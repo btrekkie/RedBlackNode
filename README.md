@@ -40,8 +40,6 @@ data and augmentation information to each node.
   order to perform a right rotation, we would need to use the parent's
   augmentation information. However, `RedBlackNode` supports augmenting each
   node with the number of nodes in the subtree, which is basically equivalent.
-* The running time of each operation has optimal big O bounds. However, beyond
-  this, no special effort has been made to optimize performance.
 
 # Example usage
 ```java

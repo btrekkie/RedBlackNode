@@ -755,47 +755,19 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
     }
 
     /**
-     * Concatenates to the end of the tree rooted at this node.  To be precise, given that all of the nodes in this
-     * precede the node "pivot", which precedes all of the nodes in "last", this returns the root of a tree containing
-     * all of these nodes.  This method destroys the trees rooted at "this" and "last".  We treat "pivot" as a solitary
-     * node that does not belong to any tree, and we ignore its initial "parent", "left", "right", and isRed fields.
-     * This method assumes that this node and "last" are the roots of their respective trees.
-     *
-     * This method takes O(log N) time.  It is more efficient than inserting "pivot" and then calling concatenate(last).
-     * It is considerably more efficient than inserting "pivot" and all of the nodes in "last".
+     * Implementation of concatenate(last, pivot) for when blackHeight() and last.blackHeight() are known. These are
+     * given by firstBlackHeight and lastBlackHeight respectively.
      */
-    public N concatenate(N last, N pivot) {
+    private N concatenate(N last, N pivot, int firstBlackHeight, int lastBlackHeight) {
         // If the black height of "first", where first = this, is less than or equal to that of "last", starting at the
         // root of "last", we keep going left until we reach a black node whose black height is equal to that of
         // "first".  Then, we make "pivot" the parent of that node and of "first", coloring it red, and perform
         // insertion fixup on the pivot.  If the black height of "first" is greater than that of "last", we do the
         // mirror image of the above.
 
-        if (parent != null) {
-            throw new IllegalArgumentException("This is not the root of a tree");
-        }
-        if (last.parent != null) {
-            throw new IllegalArgumentException("\"last\" is not the root of a tree");
-        }
-
-        // Compute the black height of the trees
-        int firstBlackHeight = 0;
-        @SuppressWarnings("unchecked")
-        N first = (N)this;
-        for (N node = first; node != null; node = node.right) {
-            if (!node.isRed) {
-                firstBlackHeight++;
-            }
-        }
-        int lastBlackHeight = 0;
-        for (N node = last; node != null; node = node.right) {
-            if (!node.isRed) {
-                lastBlackHeight++;
-            }
-        }
-
         // Identify the children and parent of pivot
-        N firstChild = first;
+        @SuppressWarnings("unchecked")
+        N firstChild = (N)this;
         N lastChild = last;
         N parent;
         if (firstBlackHeight <= lastBlackHeight) {
@@ -851,6 +823,34 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
         return pivot.fixInsertion();
     }
 
+    /** Returns the number of black nodes in a path from this to a leaf node (including this and the leaf node). */
+    private int blackHeight() {
+        int blackHeight = 0;
+        for (RedBlackNode<N> node = this; node != null; node = node.right) {
+            if (!node.isRed) {
+                blackHeight++;
+            }
+        }
+        return blackHeight;
+    }
+
+    /**
+     * Concatenates to the end of the tree rooted at this node.  To be precise, given that all of the nodes in this
+     * precede the node "pivot", which precedes all of the nodes in "last", this returns the root of a tree containing
+     * all of these nodes.  This method destroys the trees rooted at "this" and "last".  We treat "pivot" as a solitary
+     * node that does not belong to any tree, and we ignore its initial "parent", "left", "right", and isRed fields.
+     * This method assumes that this node and "last" are the roots of their respective trees.
+     *
+     * This method takes O(log N) time.  It is more efficient than inserting "pivot" and then calling concatenate(last).
+     * It is considerably more efficient than inserting "pivot" and all of the nodes in "last".
+     */
+    public N concatenate(N last, N pivot) {
+        if (parent != null || last.parent != null) {
+            throw new IllegalArgumentException("The node is not the root of a tree");
+        }
+        return concatenate(last, pivot, blackHeight(), ((RedBlackNode<N>)last).blackHeight());
+    }
+
     /**
      * Concatenates the tree rooted at "last" to the end of the tree rooted at this node.  To be precise, given that all
      * of the nodes in this precede all of the nodes in "last", this returns the root of a tree containing all of these
@@ -886,203 +886,147 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
      * @return An array consisting of the resulting trees.
      */
     public N[] split(N splitNode) {
-        // To split the tree, we accumulate a pre-split tree and a post-split tree.  We walk down the tree toward the
-        // position where we are splitting.  Whenever we go left, we concatenate the right subtree with the post-split
-        // tree, and whenever we go right, we concatenate the pre-split tree with the left subtree.  We use the
-        // concatenation algorithm described in concatenate(Object, Object).  For the pivot, we use the last node where
-        // we went left in the case of a left move, and the last node where we went right in the case of a right move.
-        //
-        // The method uses the following variables:
-        //
-        // node: The current node in our walk down the tree.
-        // first: A node on the right spine of the pre-split tree.  At the beginning of each iteration, it is the black
-        //     node with the same black height as "node".  If the pre-split tree is empty, this is null instead.
-        // firstParent: The parent of "first".  If the pre-split tree is empty, this is null.  Otherwise, this is the
-        //     same as first.parent, unless first.isLeaf().
-        // firstPivot: The node where we last went right, i.e. the next node to use as a pivot when concatenating with
-        //     the pre-split tree.
-        // advanceFirst: Whether to set "first" to be its next black descendant at the end of the loop.
-        // last, lastParent, lastPivot, advanceLast: Analogous to "first", firstParent, firstPivot, and advanceFirst,
-        //     but for the post-split tree.
+        // To split the tree, we accumulate a pre-split tree rooted at firstRoot and a post-split tree rooted at
+        // lastRoot. After initializing the trees, we walk up from splitNode or one of its ancestors to the root of the
+        // tree. Whenever we go up and to the left, we concatenate the current node's left child with the pre-split
+        // tree, using the current node as the pivot. Whenever we go up and to the right, we concatenate the post-split
+        // tree with the current node's right child, using the current node as the pivot. We maintain
+        // firstRoot.blackHeight() and lastRoot.blackHeight() using the firstBlackHeight and lastBlackHeight variables.
         if (parent != null) {
             throw new IllegalArgumentException("This is not the root of a tree");
         }
         if (isLeaf() || splitNode.isLeaf()) {
             throw new IllegalArgumentException("The root or the split node is a leaf");
         }
-
-        // Create an array containing the path from the root to splitNode
-        int depth = 1;
-        N parent;
-        for (parent = splitNode; parent.parent != null; parent = parent.parent) {
-            depth++;
-        }
-        if (parent != this) {
+        if (splitNode.root() != this) {
             throw new IllegalArgumentException("The split node does not belong to this tree");
         }
-        RedBlackNode<?>[] path = new RedBlackNode<?>[depth];
-        for (parent = splitNode; parent != null; parent = parent.parent) {
-            depth--;
-            path[depth] = parent;
-        }
 
-        @SuppressWarnings("unchecked")
-        N node = (N)this;
-        N first = null;
-        N firstParent = null;
-        N last = null;
-        N lastParent = null;
-        N firstPivot = null;
-        N lastPivot = null;
-        while (!node.isLeaf()) {
-            boolean advanceFirst = !node.isRed && firstPivot != null;
-            boolean advanceLast = !node.isRed && lastPivot != null;
-            if ((depth + 1 < path.length && path[depth + 1] == node.left) || depth + 1 == path.length) {
-                // Left move
-                if (lastPivot == null) {
-                    // The post-split tree is empty
-                    last = node.right;
-                    last.parent = null;
-                    if (last.isRed) {
-                        last.isRed = false;
-                        lastParent = last;
-                        last = last.left;
-                    }
-                } else {
-                    // Concatenate node.right and the post-split tree
-                    if (node.right.isRed) {
-                        node.right.isRed = false;
-                    } else if (!node.isRed) {
-                        lastParent = last;
-                        last = last.left;
-                        if (last.isRed) {
-                            lastParent = last;
-                            last = last.left;
-                        }
-                        advanceLast = false;
-                    }
-                    lastPivot.isRed = true;
-                    lastPivot.parent = lastParent;
-                    if (lastParent != null) {
-                        lastParent.left = lastPivot;
-                    }
-                    lastPivot.left = node.right;
-                    if (!lastPivot.left.isLeaf()) {
-                        lastPivot.left.parent = lastPivot;
-                    }
-                    lastPivot.right = last;
-                    if (!last.isLeaf()) {
-                        last.parent = lastPivot;
-                    }
-                    last = lastPivot.left;
-                    lastParent = lastPivot;
-                    lastPivot.fixInsertionWithoutGettingRoot(false);
-                }
-                lastPivot = node;
-                node = node.left;
-            } else {
-                // Right move
-                if (firstPivot == null) {
-                    // The pre-split tree is empty
-                    first = node.left;
-                    first.parent = null;
-                    if (first.isRed) {
-                        first.isRed = false;
-                        firstParent = first;
-                        first = first.right;
-                    }
-                } else {
-                    // Concatenate the post-split tree and node.left
-                    if (node.left.isRed) {
-                        node.left.isRed = false;
-                    } else if (!node.isRed) {
-                        firstParent = first;
-                        first = first.right;
-                        if (first.isRed) {
-                            firstParent = first;
-                            first = first.right;
-                        }
-                        advanceFirst = false;
-                    }
-                    firstPivot.isRed = true;
-                    firstPivot.parent = firstParent;
-                    if (firstParent != null) {
-                        firstParent.right = firstPivot;
-                    }
-                    firstPivot.right = node.left;
-                    if (!firstPivot.right.isLeaf()) {
-                        firstPivot.right.parent = firstPivot;
-                    }
-                    firstPivot.left = first;
-                    if (!first.isLeaf()) {
-                        first.parent = firstPivot;
-                    }
-                    first = firstPivot.right;
-                    firstParent = firstPivot;
-                    firstPivot.fixInsertionWithoutGettingRoot(false);
-                }
-                firstPivot = node;
-                node = node.right;
+        N pivot;
+        boolean isConcatenateLeft;
+        int concatenateBlackHeight;
+        N firstRoot;
+        int firstBlackHeight;
+        N lastRoot;
+        int lastBlackHeight;
+        if (!splitNode.left.isLeaf()) {
+            pivot = splitNode;
+            isConcatenateLeft = false;
+            concatenateBlackHeight = ((RedBlackNode<N>)splitNode.right).blackHeight();
+
+            // Initialize the pre-split tree
+            firstRoot = splitNode.left;
+            firstBlackHeight = concatenateBlackHeight;
+            firstRoot.parent = null;
+            if (firstRoot.isRed) {
+                firstRoot.isRed = false;
+                firstBlackHeight++;
             }
 
-            depth++;
-
-            // Update "first" and "last" to be the nodes at the proper black height
-            if (advanceFirst) {
-                firstParent = first;
-                first = first.right;
-                if (first.isRed) {
-                    firstParent = first;
-                    first = first.right;
-                }
-            }
-            if (advanceLast) {
-                lastParent = last;
-                last = last.left;
-                if (last.isRed) {
-                    lastParent = last;
-                    last = last.left;
-                }
-            }
-        }
-
-        // Add firstPivot to the pre-split tree
-        N leaf = node;
-        if (first == null) {
-            first = leaf;
+            lastRoot = splitNode.max().right;
+            lastBlackHeight = 1;
         } else {
-            firstPivot.isRed = true;
-            firstPivot.parent = firstParent;
-            if (firstParent != null) {
-                firstParent.right = firstPivot;
+            // Note that this branch is not needed for correctness, but it improves performance
+            N node;
+            for (node = splitNode; node.parent != null && node.parent.left == node; node = node.parent);
+            pivot = node.parent;
+            isConcatenateLeft = true;
+            concatenateBlackHeight = ((RedBlackNode<N>)node).blackHeight();
+
+            // Initialize the post-split tree
+            lastRoot = node;
+            lastBlackHeight = concatenateBlackHeight;
+            lastRoot.parent = null;
+            if (lastRoot.isRed) {
+                lastRoot.isRed = false;
+                lastBlackHeight++;
             }
-            firstPivot.left = leaf;
-            firstPivot.right = leaf;
-            firstPivot.fixInsertionWithoutGettingRoot(false);
-            for (first = firstPivot; first.parent != null; first = first.parent) {
-                first.augment();
-            }
-            first.augment();
+
+            firstRoot = splitNode.left;
+            firstBlackHeight = 1;
         }
 
-        // Add lastPivot to the post-split tree
-        lastPivot.isRed = true;
-        lastPivot.parent = lastParent;
-        if (lastParent != null) {
-            lastParent.left = lastPivot;
+        while (pivot != null) {
+            // At this point, it is invariant that:
+            //
+            // firstBlackHeight <= concatenateBlackHeight ||
+            //     (firstBlackHeight == concatenateBlackHeight + 1 &&
+            //         !pivot.isRed && !firstRoot.left.isRed && !firstRoot.right.isRed)
+            //
+            // Likewise for lastRoot and lastBlackHeight.
+            N nextPivot = pivot.parent;
+            boolean nextIsConcatenateLeft = nextPivot != null && nextPivot.right == pivot;
+            int nextConcatenateBlackHeight = concatenateBlackHeight + (pivot.isRed ? 0 : 1);
+
+            N concatenateRoot = isConcatenateLeft ? pivot.left : pivot.right;
+            if (isConcatenateLeft && firstBlackHeight >= concatenateBlackHeight && !pivot.isRed) {
+                // This branch isn't strictly necessary for correctness or for O(log N) running time. However, it
+                // improves performance because it potentially saves us from calling augment() on firstRoot twice.
+                if (firstBlackHeight > concatenateBlackHeight) {
+                    // The children of firstRoot are black per the loop invariant
+                    firstRoot.isRed = true;
+                }
+                pivot.parent = null;
+                pivot.right = firstRoot;
+                // Already true: pivot.left == concatenateRoot, concatenateRoot.parent == pivot, !pivot.isRed
+                if (!firstRoot.isLeaf()) {
+                    firstRoot.parent = pivot;
+                }
+                firstRoot = pivot;
+                firstRoot.augment();
+                firstBlackHeight = concatenateBlackHeight + 1;
+            } else if (!isConcatenateLeft && lastBlackHeight >= concatenateBlackHeight && !pivot.isRed) {
+                // As above, this branch is unnecessary, but saves us from calling augment() on lastRoot twice
+                if (lastBlackHeight > concatenateBlackHeight) {
+                    // The children of lastRoot are black per the loop invariant
+                    lastRoot.isRed = true;
+                }
+                pivot.parent = null;
+                pivot.left = lastRoot;
+                // Already true: pivot.right == concatenateRoot, concatenateRoot.parent == pivot, !pivot.isRed
+                if (!lastRoot.isLeaf()) {
+                    lastRoot.parent = pivot;
+                }
+                lastRoot = pivot;
+                lastRoot.augment();
+                lastBlackHeight = concatenateBlackHeight + 1;
+            } else {
+                concatenateRoot.parent = null;
+                if (concatenateRoot.isRed) {
+                    concatenateRoot.isRed = false;
+                    concatenateBlackHeight++;
+                }
+                boolean wereChildrenRed =
+                    !concatenateRoot.isLeaf() && concatenateRoot.left.isRed && concatenateRoot.right.isRed;
+
+                if (isConcatenateLeft) {
+                    firstRoot = ((RedBlackNode<N>)concatenateRoot).concatenate(
+                        firstRoot, pivot, concatenateBlackHeight, firstBlackHeight);
+                    if (firstBlackHeight >= concatenateBlackHeight || (wereChildrenRed && !firstRoot.left.isRed)) {
+                        firstBlackHeight = concatenateBlackHeight + 1;
+                    } else {
+                        firstBlackHeight = concatenateBlackHeight;
+                    }
+                } else {
+                    lastRoot = ((RedBlackNode<N>)lastRoot).concatenate(
+                        concatenateRoot, pivot, lastBlackHeight, concatenateBlackHeight);
+                    if (lastBlackHeight >= concatenateBlackHeight || (wereChildrenRed && !lastRoot.left.isRed)) {
+                        lastBlackHeight = concatenateBlackHeight + 1;
+                    } else {
+                        lastBlackHeight = concatenateBlackHeight;
+                    }
+                }
+            }
+
+            pivot = nextPivot;
+            isConcatenateLeft = nextIsConcatenateLeft;
+            concatenateBlackHeight = nextConcatenateBlackHeight;
         }
-        lastPivot.left = leaf;
-        lastPivot.right = leaf;
-        lastPivot.fixInsertionWithoutGettingRoot(false);
-        for (last = lastPivot; last.parent != null; last = last.parent) {
-            last.augment();
-        }
-        last.augment();
 
         @SuppressWarnings("unchecked")
         N[] result = (N[])Array.newInstance(getClass(), 2);
-        result[0] = first;
-        result[1] = last;
+        result[0] = firstRoot;
+        result[1] = lastRoot;
         return result;
     }
 
