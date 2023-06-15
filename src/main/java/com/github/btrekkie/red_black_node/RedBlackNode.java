@@ -652,7 +652,7 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             }
         }
 
-        // Clear any previously existing links, so that we're more likely to encounter an exception if we attempt to
+        // Clear any previously existing pointers, so that we're more likely to encounter an exception if we attempt to
         // access the removed node
         parent = null;
         left = null;
@@ -823,15 +823,17 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
         return pivot.fixInsertion();
     }
 
-    /** Returns the number of black nodes in a path from this to a leaf node (including this and the leaf node). */
+    /**
+     * Returns the number of black nodes in a path from this to a leaf node, including this but excluding the leaf node.
+     */
     private int blackHeight() {
-        int blackHeight = 0;
+        int blackCount = 0;
         for (RedBlackNode<N> node = this; node != null; node = node.right) {
             if (!node.isRed) {
-                blackHeight++;
+                blackCount++;
             }
         }
-        return blackHeight;
+        return blackCount - 1;
     }
 
     /**
@@ -924,7 +926,7 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             }
 
             lastRoot = splitNode.max().right;
-            lastBlackHeight = 1;
+            lastBlackHeight = 0;
         } else {
             // Note that this branch is not needed for correctness, but it improves performance
             N node;
@@ -943,7 +945,7 @@ public abstract class RedBlackNode<N extends RedBlackNode<N>> implements Compara
             }
 
             firstRoot = splitNode.left;
-            firstBlackHeight = 1;
+            firstBlackHeight = 0;
         }
 
         while (pivot != null) {

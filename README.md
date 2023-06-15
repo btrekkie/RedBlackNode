@@ -20,11 +20,14 @@ data and augmentation information to each node.
   values in a subtree. All `RedBlackNode` methods (such as `insert` and
   `remove()`) call `augment()` as necessary to correctly maintain the
   augmentation information, unless otherwise indicated in their comments.
-* The parent and child links and the color are public fields. This gives clients
-  flexibility, although it also enables them to violate the red-black or BST
-  properties.
+* The parent and child pointers and the color are public fields. This gives
+  clients flexibility, although it also enables them to violate the red-black or
+  BST properties.
 * "Assert is valid" methods allow clients to check for errors in the structure
   or contents of a red-black tree. This is useful for debugging.
+* The tree containing a `RedBlackNode` may be visualized using the
+  [RedBlackNodeVisualizer](https://github.com/btrekkie/RedBlackNodeVisualizer)
+  library. This may be useful for debugging.
 * As a bonus (a proof of concept and a test case), this includes the `TreeList`
   class, a `List` implementation backed by a red-black tree augmented by subtree
   size.
